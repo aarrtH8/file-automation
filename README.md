@@ -1,6 +1,44 @@
 # File Automation System
 
+![Python](https://img.shields.io/badge/python-3.9%2B-blue?logo=python&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-36%20passed-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+
 A lightweight, config-driven Python automation system that monitors directories in real time, applies intelligent rules, and executes automated file operations — rename, compress, archive, and delete — without manual intervention.
+
+---
+
+## Quick Start
+
+```bash
+git clone https://github.com/aarrtH8/file-automation.git
+cd file-automation
+pip install -r requirements.txt
+# Edit config/config.json to set your paths
+python src/main.py
+```
+
+Drop a file into the monitored folder — it is processed within 2 seconds.
+
+---
+
+## Table of Contents
+
+1. [Features](#features)
+2. [How It Works](#how-it-works)
+3. [Project Structure](#project-structure)
+4. [Installation](#installation)
+5. [Configuration Reference](#configuration-reference)
+6. [Running the System](#running-the-system)
+7. [Running as a Service](#running-as-a-service)
+8. [Logging](#logging)
+9. [Running Tests](#running-tests)
+10. [Error Handling & Quarantine](#error-handling--quarantine)
+11. [Adding New Rules](#adding-new-rules)
+12. [Troubleshooting](#troubleshooting)
+13. [Contributing](#contributing)
+14. [License](#license)
 
 ---
 
@@ -14,6 +52,39 @@ A lightweight, config-driven Python automation system that monitors directories 
 - **Cross-platform** — works on Windows, macOS, and Linux
 - **Daily rotating logs** — timestamped activity records with full error tracking
 - **Quarantine system** — failed files are isolated, never deleted, never re-processed
+- **Graceful shutdown** — Ctrl+C stops everything cleanly, no data loss
+
+---
+
+## How It Works
+
+```
+ Input Folder (watched)
+        │
+        │  new file detected (< 2 seconds)
+        ▼
+ ┌─────────────────┐
+ │   Rule Engine   │  ← reads config/config.json
+ └────────┬────────┘
+          │
+    ┌─────┴──────────────────────────────┐
+    │  temp pattern? (*.tmp, ~*, ...)    │ → DELETE
+    └─────┬──────────────────────────────┘
+          │  no
+    ┌─────┴──────────────────────────────┐
+    │  match a rule by extension/name?  │ → no match → SKIP (logged)
+    └─────┬──────────────────────────────┘
+          │  yes → execute action list in order
+          │
+    [rename]  →  [compress]  →  [move_to_archive]
+    [rename]  →  [move_to_archive]
+    [delete]
+          │
+          ▼
+   Archive Folder  +  Logs Folder
+```
+
+If any step fails, the file is moved to **quarantine** — it is never deleted and never re-processed.
 
 ---
 
@@ -22,19 +93,20 @@ A lightweight, config-driven Python automation system that monitors directories 
 ```
 file-automation/
 ├── config/
-│   └── config.json          # All rules, paths, and settings
+│   └── config.json              # All rules, paths, and settings — edit this file only
 ├── src/
-│   ├── main.py              # Entry point
-│   ├── watcher.py           # Directory monitoring
-│   ├── processor.py         # Pipeline orchestrator
-│   ├── file_operations.py   # Atomic file operations
-│   ├── rule_engine.py       # Rule matching engine
-│   └── logger_setup.py     # Logging configuration
+│   ├── main.py                  # Entry point — starts everything
+│   ├── watcher.py               # Real-time directory monitoring (watchdog)
+│   ├── processor.py             # Pipeline orchestrator + quarantine logic
+│   ├── file_operations.py       # Atomic operations: rename, compress, move, delete
+│   ├── rule_engine.py           # Config-driven rule matching engine
+│   └── logger_setup.py         # Daily rotating log configuration
 ├── tests/
-│   ├── test_file_operations.py
-│   ├── test_rule_engine.py
-│   └── test_processor.py
+│   ├── test_file_operations.py  # 15 tests for atomic operations
+│   ├── test_rule_engine.py      # 15 tests for rule matching
+│   └── test_processor.py       # 7 tests for pipeline sequencing
 ├── requirements.txt
+├── LICENSE
 └── README.md
 ```
 
@@ -44,36 +116,99 @@ file-automation/
 
 ### Prerequisites
 
-- Python 3.10 or higher
+- Python **3.9 or higher**
 - pip
 
-### Steps
+### Windows
+
+```bat
+REM 1. Clone the repository
+git clone https://github.com/aarrtH8/file-automation.git
+cd file-automation
+
+REM 2. Create a virtual environment
+python -m venv venv
+venv\Scripts\activate
+
+REM 3. Install dependencies
+pip install -r requirements.txt
+```
+
+### macOS / Linux
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/aarrtH8/file-automation.git
 cd file-automation
 
-# 2. (Recommended) Create a virtual environment
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# macOS / Linux
+# 2. Create a virtual environment
+python3 -m venv venv
 source venv/bin/activate
 
 # 3. Install dependencies
 pip install -r requirements.txt
 ```
 
+### Verify installation
+
+```bash
+python src/main.py --help
+```
+
+Expected output:
+```
+usage: main.py [-h] [--config CONFIG]
+
+File Automation System — monitors directories and applies rules.
+
+options:
+  --config CONFIG  Path to the configuration file (JSON or YAML). Default: config/config.json
+```
+
 ---
 
-## Configuration
+## Configuration Reference
 
-All behavior is controlled by `config/config.json`. No Python files need to be edited.
+All behavior is controlled by `config/config.json`. **No Python files need to be edited.**
 
-### Paths
+### Full config.json structure
+
+```json
+{
+  "version": "1.0",
+  "settings": { ... },
+  "paths": { ... },
+  "rename": { ... },
+  "temp_patterns": [ ... ],
+  "rules": [ ... ]
+}
+```
+
+---
+
+### `settings`
+
+```json
+"settings": {
+    "log_level": "INFO",
+    "max_worker_threads": 4,
+    "file_stability_check_interval_ms": 100,
+    "file_stability_max_retries": 3
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `log_level` | string | `"INFO"` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `max_worker_threads` | int | `4` | Max parallel files processed simultaneously |
+| `file_stability_check_interval_ms` | int | `100` | Milliseconds between file-size checks (slow-write detection) |
+| `file_stability_max_retries` | int | `3` | Number of stability checks before giving up |
+
+> **Tip:** Set `log_level` to `"DEBUG"` to see rule matching details in the logs.
+
+---
+
+### `paths`
 
 ```json
 "paths": {
@@ -84,56 +219,31 @@ All behavior is controlled by `config/config.json`. No Python files need to be e
 }
 ```
 
-- **`watch_dirs`** — list of folders to monitor (add more for multi-directory support)
-- **`archive_dir`** — where processed files end up
-- **`logs_dir`** — where daily log files are written
-- **`quarantine_dir`** — where files that failed processing are isolated
-
-> All directories are created automatically at startup if they do not exist.
-
-### Rules
-
-Each rule in the `rules` array defines which files to match and what to do with them:
-
-```json
-{
-    "id": "rule_pdf",
-    "description": "PDFs: rename, compress, archive",
-    "priority": 10,
-    "match_extensions": [".pdf"],
-    "match_name_pattern": null,
-    "actions": ["rename", "compress", "move_to_archive"]
-}
-```
-
 | Field | Description |
 |---|---|
-| `id` | Unique identifier (for logging) |
-| `priority` | Lower number = evaluated first |
-| `match_extensions` | List of file extensions (case-insensitive) |
-| `match_name_pattern` | Optional glob pattern for the filename (e.g. `"invoice_*"`) |
-| `actions` | Ordered list of operations to perform |
+| `watch_dirs` | **List** of folders to monitor. Add multiple entries for multi-directory support. |
+| `archive_dir` | Destination for all successfully processed files. |
+| `logs_dir` | Where daily log files are written. |
+| `quarantine_dir` | Where files that failed processing are isolated for review. |
 
-#### Available Actions
+> All directories are **created automatically** at startup if they do not exist.
 
-| Action | Description |
-|---|---|
-| `rename` | Renames file to `<name>_<YYYYMMDD>_<HHMMSS>.<ext>` |
-| `compress` | Wraps the file in a ZIP archive |
-| `move_to_archive` | Moves the file to `archive_dir` |
-| `delete` | Deletes the file permanently |
-
-### Temp Patterns
-
-Files matching any temp pattern are **deleted immediately**, before rules are evaluated:
-
+**Linux/macOS example:**
 ```json
-"temp_patterns": ["~*", "*.tmp", "*.bak", "desktop.ini", "Thumbs.db"]
+"watch_dirs": ["/home/user/file_automation/input"]
 ```
 
-Standard glob syntax applies (`*` matches any characters, `?` matches one character).
+**Multiple directories:**
+```json
+"watch_dirs": [
+    "C:/File_Automation/Input",
+    "C:/Users/John/Downloads/ToProcess"
+]
+```
 
-### Rename Format
+---
+
+### `rename`
 
 ```json
 "rename": {
@@ -143,32 +253,160 @@ Standard glob syntax applies (`*` matches any characters, `?` matches one charac
 }
 ```
 
-Example: `report.pdf` → `report_20260411_143210.pdf`
+| Field | Description |
+|---|---|
+| `enabled` | Set to `false` to skip renaming entirely (files keep their original name) |
+| `timestamp_format` | Python `strftime` format string |
+| `separator` | Character placed between the original name and the timestamp |
+
+**Result:** `report.pdf` → `report_20260411_143210.pdf`
+
+Common timestamp formats:
+| Format | Result |
+|---|---|
+| `%Y%m%d_%H%M%S` | `20260411_143210` (default) |
+| `%Y-%m-%d` | `2026-04-11` |
+| `%d%m%Y_%H%M` | `11042026_1432` |
 
 ---
 
-## Execution
+### `temp_patterns`
 
-### Run manually
+```json
+"temp_patterns": ["~*", "*.tmp", "*.bak", "desktop.ini", "Thumbs.db", ".DS_Store"]
+```
+
+Files matching any of these **glob patterns** are deleted immediately, before any rule is checked.
+
+| Pattern | Matches |
+|---|---|
+| `~*` | `~lockfile`, `~$report.docx` (Office temp files) |
+| `*.tmp` | `upload.tmp`, `data.tmp` |
+| `*.bak` | `config.bak`, `file.bak` |
+| `Thumbs.db` | Windows thumbnail cache |
+| `.DS_Store` | macOS folder metadata |
+| `*_copy` | Any file ending with `_copy` |
+
+---
+
+### `rules`
+
+```json
+"rules": [
+    {
+        "id": "rule_pdf",
+        "description": "PDF files: rename, compress, archive",
+        "priority": 10,
+        "match_extensions": [".pdf"],
+        "match_name_pattern": null,
+        "actions": ["rename", "compress", "move_to_archive"]
+    }
+]
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Unique identifier shown in logs |
+| `description` | string | Human-readable note (not used by the engine) |
+| `priority` | int | Lower number = evaluated first. First match wins. |
+| `match_extensions` | list | Case-insensitive file extensions (include the dot: `".pdf"`) |
+| `match_name_pattern` | string or null | Optional glob pattern for the filename (e.g. `"invoice_*"`) |
+| `actions` | list | **Ordered** list of operations to execute |
+
+#### Available actions
+
+| Action | Description |
+|---|---|
+| `rename` | Renames file using the `rename` config block format |
+| `compress` | Compresses file into a `.zip` archive (file is removed after zipping) |
+| `move_to_archive` | Moves the file to `archive_dir` |
+| `delete` | Deletes the file. Pipeline stops immediately after. |
+
+#### Rule matching logic
+
+1. If the filename matches any `temp_patterns` → **delete**, no rule checked
+2. Rules are evaluated in ascending `priority` order
+3. A file matches a rule if **both** conditions are true:
+   - Its extension is in `match_extensions`
+   - Its name matches `match_name_pattern` (if set; `null` means always match)
+4. **First matching rule wins** — only one rule is applied per file
+5. If no rule matches → file is left untouched and logged as skipped
+
+---
+
+## Running the System
 
 ```bash
-# From the project root
+# Activate your virtual environment first
+# Windows:
+venv\Scripts\activate
+# macOS/Linux:
+source venv/bin/activate
+
+# Start with default config
 python src/main.py
 
-# With a custom config path
-python src/main.py --config /path/to/my_config.json
+# Start with a custom config path
+python src/main.py --config /path/to/custom_config.json
 
-# YAML config is also supported (requires pyyaml)
+# YAML config is also supported (requires pyyaml — already in requirements.txt)
 python src/main.py --config config/config.yaml
 ```
 
-Press **Ctrl+C** to stop. The system shuts down cleanly.
+Press **Ctrl+C** to stop. The system shuts down cleanly — no files are lost.
 
-### Run as a background service
+### What you will see
 
-#### Linux — systemd
+```
+2026-04-13 14:32:08 | INFO     | ============================================================
+2026-04-13 14:32:08 | INFO     | File Automation System  |  config: config/config.json
+2026-04-13 14:32:08 | INFO     | ============================================================
+2026-04-13 14:32:08 | INFO     | Watching : C:/File_Automation/Input
+2026-04-13 14:32:08 | INFO     | File Automation System running. Press Ctrl+C to stop.
 
-Create `/etc/systemd/system/file-automation.service`:
+# When a file is dropped into Input/:
+2026-04-13 14:32:15 | INFO     | Detected : 'report.pdf'
+2026-04-13 14:32:15 | INFO     | Renamed  : 'report.pdf'  ->  'report_20260413_143215.pdf'
+2026-04-13 14:32:15 | INFO     | Compressed: 'report_20260413_143215.pdf'  ->  'report_20260413_143215.zip'
+2026-04-13 14:32:15 | INFO     | Moved    : 'report_20260413_143215.zip'  ->  C:/File_Automation/Archive/
+2026-04-13 14:32:15 | INFO     | Complete : 'report.pdf'  (all actions done)
+```
+
+---
+
+## Running as a Service
+
+### Windows — Task Scheduler (recommended)
+
+1. Open **Task Scheduler** (`taskschd.msc`)
+2. Click **Create Task** (not "Basic Task")
+3. **General** tab:
+   - Name: `File Automation System`
+   - Check **Run whether user is logged on or not**
+   - Check **Run with highest privileges**
+4. **Triggers** tab → New → **At startup**
+5. **Actions** tab → New:
+   - Action: **Start a program**
+   - Program/script: `C:\path\to\file-automation\venv\Scripts\python.exe`
+   - Arguments: `src/main.py`
+   - Start in: `C:\path\to\file-automation`
+6. **Settings** tab:
+   - Check **Restart task if it fails**, every 1 minute, up to 3 times
+7. Click OK — enter your Windows password if prompted
+
+To verify it's running: open Task Manager → Details tab → look for `python.exe`.
+
+---
+
+### Linux — systemd (recommended)
+
+Create the service file:
+
+```bash
+sudo nano /etc/systemd/system/file-automation.service
+```
+
+Paste:
 
 ```ini
 [Unit]
@@ -179,99 +417,197 @@ After=network.target
 Type=simple
 User=youruser
 WorkingDirectory=/path/to/file-automation
-ExecStart=/path/to/venv/bin/python src/main.py
+ExecStart=/path/to/file-automation/venv/bin/python src/main.py
 Restart=on-failure
 RestartSec=5
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 ```
 
+Enable and start:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable file-automation
 sudo systemctl start file-automation
+
+# Check status
 sudo systemctl status file-automation
+
+# View live logs
+sudo journalctl -u file-automation -f
 ```
 
-#### Linux — cron (on boot)
+---
+
+### Linux — cron (simple alternative)
 
 ```bash
-@reboot /path/to/venv/bin/python /path/to/file-automation/src/main.py >> /var/log/file-automation.log 2>&1
+crontab -e
 ```
 
-#### Windows — Task Scheduler
+Add:
+```
+@reboot /path/to/file-automation/venv/bin/python /path/to/file-automation/src/main.py >> /var/log/file-automation.log 2>&1
+```
 
-1. Open **Task Scheduler** → Create Basic Task
-2. Trigger: **At startup** (or on login)
-3. Action: **Start a program**
-   - Program: `C:\path\to\venv\Scripts\python.exe`
-   - Arguments: `src/main.py`
-   - Start in: `C:\path\to\file-automation`
-4. Check **Run whether user is logged on or not**
+---
+
+### macOS — launchd
+
+Create `~/Library/LaunchAgents/com.fileautomation.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.fileautomation</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/venv/bin/python</string>
+        <string>/path/to/file-automation/src/main.py</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/file-automation.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/file-automation-error.log</string>
+</dict>
+</plist>
+```
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.fileautomation.plist
+```
 
 ---
 
 ## Logging
 
-Log files are stored in the configured `logs_dir` and rotate daily at midnight.
+Log files are stored in the configured `logs_dir` and **rotate automatically at midnight**.
 
 ```
 Logs/
-├── automation.log                  # Current day (active)
-├── automation.log.2026_04_12       # Yesterday's log
-└── automation.log.2026_04_11       # Two days ago
+├── automation.log                  # Today's log (active)
+├── automation.log.2026_04_12       # Yesterday
+├── automation.log.2026_04_11       # 2 days ago
+└── ...                             # Up to 30 days kept
 ```
-
-The last 30 days of logs are kept automatically.
 
 ### Log format
 
 ```
-2026-04-13 14:32:10 | INFO     | Detected : 'report.pdf'
-2026-04-13 14:32:10 | INFO     | Renamed  : 'report.pdf'  ->  'report_20260413_143210.pdf'
-2026-04-13 14:32:10 | INFO     | Compressed: 'report_20260413_143210.pdf'  ->  'report_20260413_143210.zip'
-2026-04-13 14:32:10 | INFO     | Moved    : 'report_20260413_143210.zip'  ->  /File_Automation/Archive/...
-2026-04-13 14:32:10 | INFO     | Complete : 'report.pdf'  (all actions done)
+YYYY-MM-DD HH:MM:SS | LEVEL    | Message
 ```
 
-Set `"log_level": "DEBUG"` in config for verbose output including rule matching details.
+### Log levels
+
+| Level | What it shows |
+|---|---|
+| `INFO` | Every file action (default) |
+| `DEBUG` | + rule matching details, stability check results |
+| `WARNING` | File disappeared, unknown action, quarantine |
+| `ERROR` | Full traceback when an operation fails |
+
+### Reading logs
+
+```bash
+# Live tail
+tail -f C:/File_Automation/Logs/automation.log
+
+# Search for errors
+grep "ERROR" C:/File_Automation/Logs/automation.log
+
+# See all processed files for today
+grep "Complete" C:/File_Automation/Logs/automation.log
+
+# See quarantined files
+grep "Quarantined" C:/File_Automation/Logs/automation.log
+```
 
 ---
 
 ## Running Tests
 
 ```bash
-# Install test dependency
+# Activate virtual environment first, then:
 pip install pytest
 
-# Run all tests from the project root
+# Run all 36 tests
 pytest tests/ -v
+
+# Run a specific test file
+pytest tests/test_file_operations.py -v
+
+# Run with output on failure
+pytest tests/ -v --tb=short
 ```
+
+Expected output:
+```
+36 passed in 0.26s
+```
+
+Tests use temporary directories (`tempfile.TemporaryDirectory`) — they never touch your actual `Input/`, `Archive/`, or `Logs/` folders.
 
 ---
 
-## Error Handling
+## Error Handling & Quarantine
 
 | Scenario | Behavior |
 |---|---|
-| File disappears before processing | Logged as warning, skipped |
-| File written slowly (large file) | Stability check polls until size is stable |
-| Operation fails (e.g. permissions) | File moved to quarantine, error logged with traceback |
-| No rule matches a file | Logged as info, file left untouched |
-| Config file not found | Error printed to stderr, process exits with code 1 |
-| Archive/Quarantine dir missing | Created automatically |
+| File disappears before processing | Warning logged, skipped silently |
+| File still being written (large file) | Stability check polls until size is stable |
+| Operation fails (permissions, disk full) | File moved to `quarantine_dir`, full error traceback logged |
+| No rule matches | Info logged, file left untouched |
+| Config file not found | Error to stderr, process exits with code 1 |
+| Invalid JSON in config | Error to stderr, process exits with code 1 |
+| Archive / quarantine dir missing | Created automatically at startup |
+| Multiple files arrive simultaneously | Thread pool handles them in parallel |
+
+### The quarantine folder
+
+`Archive/quarantine/` is the safety net. Files end up there when something unexpected happens mid-pipeline. They are **never deleted automatically**.
+
+To review quarantined files:
+1. Check the logs for the corresponding error and traceback
+2. Fix the root cause (permissions, disk space, etc.)
+3. Manually move the file back to `Input/` to reprocess it
 
 ---
 
 ## Adding New Rules
 
-Edit `config/config.json` — no code changes required:
+Edit `config/config.json` only — no code changes required.
+
+### Example: process `.docx` files differently from `.txt`
 
 ```json
 {
-    "id": "rule_invoices",
-    "description": "Invoice PDFs: rename, compress, archive",
+    "id": "rule_word",
+    "description": "Word documents: rename, compress, archive",
+    "priority": 25,
+    "match_extensions": [".docx", ".doc"],
+    "match_name_pattern": null,
+    "actions": ["rename", "compress", "move_to_archive"]
+}
+```
+
+### Example: match files by name pattern (invoices only)
+
+```json
+{
+    "id": "rule_invoice_pdf",
+    "description": "Invoice PDFs (name starts with 'invoice_'): special handling",
     "priority": 5,
     "match_extensions": [".pdf"],
     "match_name_pattern": "invoice_*",
@@ -279,8 +615,104 @@ Edit `config/config.json` — no code changes required:
 }
 ```
 
+> This rule (priority 5) will match `invoice_001.pdf` before the general `rule_pdf` (priority 10).
+> Regular PDFs not starting with `invoice_` will fall through to `rule_pdf`.
+
+### Example: delete all `.log` files
+
+```json
+{
+    "id": "rule_delete_logs",
+    "description": "Delete all log files",
+    "priority": 50,
+    "match_extensions": [".log"],
+    "match_name_pattern": null,
+    "actions": ["delete"]
+}
+```
+
+---
+
+## Troubleshooting
+
+### System starts but no files are processed
+
+- Verify the `watch_dirs` path in `config.json` is exactly correct (check for typos, wrong slashes)
+- Make sure the directory **exists** (it is created only if the path itself is valid)
+- On Windows, use forward slashes: `"C:/File_Automation/Input"` not `"C:\\File_Automation\\Input"`
+- Drop a test file and watch the console for `Detected :` output
+
+### `ModuleNotFoundError: No module named 'watchdog'`
+
+The virtual environment is not activated, or dependencies were not installed:
+```bash
+# Activate first
+venv\Scripts\activate         # Windows
+source venv/bin/activate      # macOS/Linux
+
+# Then install
+pip install -r requirements.txt
+```
+
+### Files are detected but go to quarantine
+
+Check the logs for the error traceback:
+```bash
+grep -A 10 "Quarantined" Logs/automation.log
+```
+
+Common causes:
+- **Permissions**: the process does not have write access to `Archive/`
+- **Disk full**: no space left to move/compress the file
+- **File locked**: another process is holding the file open (antivirus, sync tools)
+
+### Files are processed twice
+
+This can happen if both the `Input/` and `Archive/` folders are on the same watched path. Verify that `archive_dir` is **not inside** any `watch_dirs` entry, or add it to `ignored_dirs` logic.
+
+### `RuntimeError: Logger not initialized`
+
+`get_logger()` was called before `setup_logging()`. This should not happen in normal usage. If you are importing modules directly in a script, call `setup_logging()` first.
+
+### Large files are being processed before they finish copying
+
+Increase the stability check retries in config:
+```json
+"settings": {
+    "file_stability_check_interval_ms": 200,
+    "file_stability_max_retries": 10
+}
+```
+
+### Python version error
+
+```
+SyntaxError: ...
+```
+
+Check your Python version:
+```bash
+python --version
+```
+Python **3.9 or higher** is required.
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Make changes and add tests
+4. Run the test suite: `pytest tests/ -v`
+5. Commit: `git commit -m "Add: my feature"`
+6. Push and open a Pull Request
+
+All pull requests must pass the full 36-test suite before merging.
+
 ---
 
 ## License
 
-MIT License. See `LICENSE` for details.
+MIT License — see [LICENSE](LICENSE) for full text.
+
+Free to use, modify, and distribute for personal and commercial projects.
