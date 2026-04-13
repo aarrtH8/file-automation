@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.fileautomation</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{PYTHON}</string>
+        <string>{INSTALL_DIR}/src/main.py</string>
+        <string>--config</string>
+        <string>{INSTALL_DIR}/config/config.json</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{INSTALL_DIR}</string>
+
+    <!-- Start automatically at login -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart if it crashes -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Throttle restarts (seconds) -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- Log files -->
+    <key>StandardOutPath</key>
+    <string>{INSTALL_DIR}/service/launchd_stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>{INSTALL_DIR}/service/launchd_stderr.log</string>
+</dict>
+</plist>

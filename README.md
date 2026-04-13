@@ -15,11 +15,22 @@ A lightweight, config-driven Python automation system that monitors directories 
 git clone https://github.com/aarrtH8/file-automation.git
 cd file-automation
 pip install -r requirements.txt
-# Edit config/config.json to set your paths
-python src/main.py
 ```
 
-Drop a file into the monitored folder — it is processed within 2 seconds.
+Edit `config/config.json` to set your folder paths, then **install as a background service in one command:**
+
+```bash
+# Linux (requires sudo)
+sudo python install_service.py
+
+# macOS
+python install_service.py
+
+# Windows
+python install_service.py
+```
+
+The system starts immediately and restarts automatically on every reboot — no terminal left open.
 
 ---
 
@@ -30,10 +41,10 @@ Drop a file into the monitored folder — it is processed within 2 seconds.
 3. [Project Structure](#project-structure)
 4. [Installation](#installation)
 5. [Configuration Reference](#configuration-reference)
-6. [Running the System](#running-the-system)
-7. [Running as a Service](#running-as-a-service)
+6. [Running Manually](#running-manually)
+7. [Running as a Background Service](#running-as-a-background-service)
 8. [Logging](#logging)
-9. [Running Tests](#running-tests)
+9. [Testing](#testing)
 10. [Error Handling & Quarantine](#error-handling--quarantine)
 11. [Adding New Rules](#adding-new-rules)
 12. [Troubleshooting](#troubleshooting)
@@ -101,10 +112,15 @@ file-automation/
 │   ├── file_operations.py       # Atomic operations: rename, compress, move, delete
 │   ├── rule_engine.py           # Config-driven rule matching engine
 │   └── logger_setup.py         # Daily rotating log configuration
+├── service/
+│   ├── file-automation.service  # systemd unit file (Linux)
+│   └── com.fileautomation.plist # launchd agent plist (macOS)
 ├── tests/
 │   ├── test_file_operations.py  # 15 tests for atomic operations
 │   ├── test_rule_engine.py      # 15 tests for rule matching
 │   └── test_processor.py       # 7 tests for pipeline sequencing
+├── install_service.py           # One-command service installer (Linux/macOS/Windows)
+├── test_live.py                 # Live end-to-end test script
 ├── requirements.txt
 ├── LICENSE
 └── README.md
@@ -334,7 +350,9 @@ Files matching any of these **glob patterns** are deleted immediately, before an
 
 ---
 
-## Running the System
+## Running Manually
+
+> For production use, see [Running as a Background Service](#running-as-a-background-service).
 
 ```bash
 # Activate your virtual environment first
@@ -374,120 +392,47 @@ Press **Ctrl+C** to stop. The system shuts down cleanly — no files are lost.
 
 ---
 
-## Running as a Service
+## Running as a Background Service
 
-### Windows — Task Scheduler (recommended)
+The `install_service.py` script handles everything automatically — it detects your OS and installs the appropriate service.
 
-1. Open **Task Scheduler** (`taskschd.msc`)
-2. Click **Create Task** (not "Basic Task")
-3. **General** tab:
-   - Name: `File Automation System`
-   - Check **Run whether user is logged on or not**
-   - Check **Run with highest privileges**
-4. **Triggers** tab → New → **At startup**
-5. **Actions** tab → New:
-   - Action: **Start a program**
-   - Program/script: `C:\path\to\file-automation\venv\Scripts\python.exe`
-   - Arguments: `src/main.py`
-   - Start in: `C:\path\to\file-automation`
-6. **Settings** tab:
-   - Check **Restart task if it fails**, every 1 minute, up to 3 times
-7. Click OK — enter your Windows password if prompted
-
-To verify it's running: open Task Manager → Details tab → look for `python.exe`.
-
----
-
-### Linux — systemd (recommended)
-
-Create the service file:
+### Install
 
 ```bash
-sudo nano /etc/systemd/system/file-automation.service
+# Linux (requires sudo — installs a systemd service)
+sudo python install_service.py
+
+# macOS (no sudo needed — installs a launchd user agent)
+python install_service.py
+
+# Windows (run as Administrator — creates a Task Scheduler task)
+python install_service.py
 ```
 
-Paste:
+What the installer does:
+1. Verifies config and dependencies
+2. Writes the correct service file for your OS
+3. Enables it to start at boot/login
+4. Starts it immediately
 
-```ini
-[Unit]
-Description=File Automation System
-After=network.target
-
-[Service]
-Type=simple
-User=youruser
-WorkingDirectory=/path/to/file-automation
-ExecStart=/path/to/file-automation/venv/bin/python src/main.py
-Restart=on-failure
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and start:
+### Manage the service
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable file-automation
-sudo systemctl start file-automation
-
 # Check status
-sudo systemctl status file-automation
+python install_service.py --status
 
-# View live logs
-sudo journalctl -u file-automation -f
+# Uninstall
+sudo python install_service.py --remove   # Linux
+python install_service.py --remove        # macOS / Windows
 ```
 
----
+### OS-specific management commands
 
-### Linux — cron (simple alternative)
-
-```bash
-crontab -e
-```
-
-Add:
-```
-@reboot /path/to/file-automation/venv/bin/python /path/to/file-automation/src/main.py >> /var/log/file-automation.log 2>&1
-```
-
----
-
-### macOS — launchd
-
-Create `~/Library/LaunchAgents/com.fileautomation.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.fileautomation</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/path/to/venv/bin/python</string>
-        <string>/path/to/file-automation/src/main.py</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/file-automation.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/file-automation-error.log</string>
-</dict>
-</plist>
-```
-
-```bash
-launchctl load ~/Library/LaunchAgents/com.fileautomation.plist
-```
+| Action | Linux | macOS | Windows |
+|---|---|---|---|
+| Stop | `sudo systemctl stop file-automation` | `launchctl unload ~/Library/LaunchAgents/com.fileautomation.plist` | `schtasks /End /TN FileAutomationSystem` |
+| Start | `sudo systemctl start file-automation` | `launchctl load ~/Library/LaunchAgents/com.fileautomation.plist` | `schtasks /Run /TN FileAutomationSystem` |
+| Live logs | `sudo journalctl -u file-automation -f` | `tail -f service/launchd_stdout.log` | `type Logs\automation.log` |
 
 ---
 
@@ -536,28 +481,42 @@ grep "Quarantined" C:/File_Automation/Logs/automation.log
 
 ---
 
-## Running Tests
+## Testing
+
+### Live end-to-end test
+
+Spins up a real watcher, drops 9 test files, verifies results, and cleans up. No configuration needed.
 
 ```bash
-# Activate virtual environment first, then:
-pip install pytest
-
-# Run all 36 tests
-pytest tests/ -v
-
-# Run a specific test file
-pytest tests/test_file_operations.py -v
-
-# Run with output on failure
-pytest tests/ -v --tb=short
+python test_live.py
 ```
 
 Expected output:
 ```
-36 passed in 0.26s
+FILE                      EXPECTED        RESULT
+invoice.pdf               archived_zip    ✔  renamed + zipped → invoice_20260413_195351.zip
+photo.jpg                 archived_raw    ✔  renamed + moved  → photo_20260413_195351.jpg
+notes.txt                 archived_zip    ✔  renamed + zipped → notes_20260413_195351.zip
+report.docx               archived_zip    ✔  renamed + zipped → report_20260413_195351.zip
+~lockfile                 deleted         ✔  deleted correctly
+cache.tmp                 deleted         ✔  deleted correctly
+backup.bak                deleted         ✔  deleted correctly
+Thumbs.db                 deleted         ✔  deleted correctly
+data.xyz                  untouched       ✔  left untouched in Input/ (no rule matched)
+
+All 9/9 tests passed.
 ```
 
-Tests use temporary directories (`tempfile.TemporaryDirectory`) — they never touch your actual `Input/`, `Archive/`, or `Logs/` folders.
+### Unit tests
+
+```bash
+pip install pytest
+pytest tests/ -v
+```
+
+Expected: `36 passed`
+
+Unit tests use temporary directories — they never touch your actual `Input/`, `Archive/`, or `Logs/` folders.
 
 ---
 

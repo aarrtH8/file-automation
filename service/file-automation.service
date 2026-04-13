@@ -1,0 +1,25 @@
+[Unit]
+Description=File Automation System
+Documentation=https://github.com/aarrtH8/file-automation
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User={USER}
+Group={GROUP}
+WorkingDirectory={INSTALL_DIR}
+ExecStart={PYTHON} {INSTALL_DIR}/src/main.py --config {INSTALL_DIR}/config/config.json
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=file-automation
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
