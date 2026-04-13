@@ -1,0 +1,65 @@
+{
+  "version": "1.0",
+  "settings": {
+    "log_level": "INFO",
+    "max_worker_threads": 4,
+    "file_stability_check_interval_ms": 100,
+    "file_stability_max_retries": 3
+  },
+  "paths": {
+    "watch_dirs": [
+      "C:/File_Automation/Input"
+    ],
+    "archive_dir": "C:/File_Automation/Archive",
+    "logs_dir": "C:/File_Automation/Logs",
+    "quarantine_dir": "C:/File_Automation/Archive/quarantine"
+  },
+  "rename": {
+    "enabled": true,
+    "timestamp_format": "%Y%m%d_%H%M%S",
+    "separator": "_"
+  },
+  "temp_patterns": [
+    "~*",
+    "*.tmp",
+    "*.bak",
+    "*.temp",
+    "desktop.ini",
+    "Thumbs.db",
+    ".DS_Store"
+  ],
+  "rules": [
+    {
+      "id": "rule_pdf",
+      "description": "PDF files: rename, compress into ZIP, move to archive",
+      "priority": 10,
+      "match_extensions": [".pdf"],
+      "match_name_pattern": null,
+      "actions": ["rename", "compress", "move_to_archive"]
+    },
+    {
+      "id": "rule_image",
+      "description": "Image files: rename and move to archive without compression",
+      "priority": 20,
+      "match_extensions": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"],
+      "match_name_pattern": null,
+      "actions": ["rename", "move_to_archive"]
+    },
+    {
+      "id": "rule_document",
+      "description": "Office and text documents: rename, compress, move to archive",
+      "priority": 30,
+      "match_extensions": [".txt", ".csv", ".docx", ".doc", ".xlsx", ".xls", ".pptx"],
+      "match_name_pattern": null,
+      "actions": ["rename", "compress", "move_to_archive"]
+    },
+    {
+      "id": "rule_archive",
+      "description": "Already compressed files: rename and move to archive",
+      "priority": 40,
+      "match_extensions": [".zip", ".gz", ".tar", ".rar", ".7z"],
+      "match_name_pattern": null,
+      "actions": ["rename", "move_to_archive"]
+    }
+  ]
+}
