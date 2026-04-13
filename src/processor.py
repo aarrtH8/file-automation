@@ -152,10 +152,21 @@ class FileProcessor:
                 current_path = ops.rename_file(current_path, self._rename_cfg)
 
             elif action == "compress":
-                current_path = ops.compress_file(current_path, current_path.parent)
+                # Compress directly into archive_dir so the ZIP is never
+                # created inside the watched Input/ folder, which would
+                # trigger a spurious second watchdog event.
+                current_path = ops.compress_file(current_path, self._archive_dir)
 
             elif action == "move_to_archive":
-                current_path = ops.move_file(current_path, self._archive_dir)
+                # If a prior compress already landed the file in archive_dir,
+                # skip the move to avoid a no-op or collision.
+                if current_path.parent.resolve() == self._archive_dir.resolve():
+                    self._logger.debug(
+                        "File '%s' is already in archive_dir — skipping move.",
+                        current_path.name,
+                    )
+                else:
+                    current_path = ops.move_file(current_path, self._archive_dir)
 
             elif action == "delete":
                 ops.delete_file(current_path)

@@ -65,13 +65,14 @@ class TestActionSequencing:
         src.write_text("pdf content")
 
         renamed = tmp_path / "report_20260411_143210.pdf"
-        zip_path = tmp_path / "report_20260411_143210.zip"
-        final_path = tmp_path / "archive" / "report_20260411_143210.zip"
+        # compress now writes directly into archive_dir, so the zip is there
+        archive_dir = tmp_path / "archive"
+        zip_path = archive_dir / "report_20260411_143210.zip"
 
         with (
             patch("processor.ops.rename_file", return_value=renamed) as mock_rename,
             patch("processor.ops.compress_file", return_value=zip_path) as mock_compress,
-            patch("processor.ops.move_file", return_value=final_path) as mock_move,
+            patch("processor.ops.move_file") as mock_move,
         ):
             processor = _make_processor(tmp_path)
             processor._rule_engine.get_actions_for_file = MagicMock(
@@ -80,8 +81,10 @@ class TestActionSequencing:
             processor.process(src)
 
         mock_rename.assert_called_once_with(src, processor._rename_cfg)
-        mock_compress.assert_called_once_with(renamed, renamed.parent)
-        mock_move.assert_called_once_with(zip_path, processor._archive_dir)
+        # compress targets archive_dir directly (avoids watchdog re-firing on Input/)
+        mock_compress.assert_called_once_with(renamed, processor._archive_dir)
+        # move_to_archive is skipped — file is already in archive_dir
+        mock_move.assert_not_called()
 
     def test_rename_archive_pipeline_no_compress(self, tmp_path):
         src = tmp_path / "photo.jpg"

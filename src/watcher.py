@@ -17,9 +17,14 @@ Usage (called by main.py):
 
 from __future__ import annotations
 
+import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+# Matches files already renamed by the system: <stem>_YYYYMMDD_HHMMSS[_N].<ext>
+_RENAMED_PATTERN = re.compile(r".+_\d{8}_\d{6}(_\d+)?\.[^.]+$")
 
 from watchdog.events import FileCreatedEvent, FileMovedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
@@ -42,6 +47,10 @@ class _FileEventHandler(FileSystemEventHandler):
         self._executor = executor
         self._ignored_dirs = ignored_dirs
         self._logger = get_logger()
+        # Tracks files currently being processed to suppress duplicate events
+        # that arise when rename/compress create intermediate files in Input/.
+        self._in_flight: set[Path] = set()
+        self._in_flight_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Watchdog callbacks
@@ -74,10 +83,27 @@ class _FileEventHandler(FileSystemEventHandler):
             )
             return
 
-        self._logger.debug("Dispatching '%s' to processor.", filepath.name)
-        self._executor.submit(self._safe_process, filepath)
+        if _RENAMED_PATTERN.match(filepath.name):
+            self._logger.debug(
+                "Ignored event for '%s' (already-renamed intermediate file).",
+                filepath.name,
+            )
+            return
 
-    def _safe_process(self, filepath: Path) -> None:
+        resolved = filepath.resolve()
+        with self._in_flight_lock:
+            if resolved in self._in_flight:
+                self._logger.debug(
+                    "Skipping duplicate event for '%s' (already in flight).",
+                    filepath.name,
+                )
+                return
+            self._in_flight.add(resolved)
+
+        self._logger.debug("Dispatching '%s' to processor.", filepath.name)
+        self._executor.submit(self._safe_process, filepath, resolved)
+
+    def _safe_process(self, filepath: Path, resolved: Path) -> None:
         """Wrap processor.process() so thread pool workers never raise."""
         try:
             self._processor.process(filepath)
@@ -85,6 +111,9 @@ class _FileEventHandler(FileSystemEventHandler):
             self._logger.exception(
                 "Unhandled exception in worker for '%s': %s", filepath.name, exc
             )
+        finally:
+            with self._in_flight_lock:
+                self._in_flight.discard(resolved)
 
     def _is_in_ignored_dir(self, filepath: Path) -> bool:
         """Return True if the file resides inside any ignored output directory."""
